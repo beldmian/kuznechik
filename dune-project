@@ -19,4 +19,6 @@
  (name kuznechik)
  (synopsis "Implementation of Kuzneechik cipher")
  (description "Implementation of Kuznechik block cipher from Russian GOST standart")
- (depends ocaml dune))
+ (depends
+  (ocaml (>= "4.14.0"))
+  dune))

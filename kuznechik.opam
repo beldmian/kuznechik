@@ -10,7 +10,7 @@ homepage: "https://github.com/beldmian/kuznechik"
 doc: "https://github.com/beldmian/kuznechik"
 bug-reports: "https://github.com/beldmian/kuznechik/issues"
 depends: [
-  "ocaml"
+  "ocaml" {>= "4.14.0"}
   "dune" {>= "3.16"}
   "odoc" {with-doc}
 ]
