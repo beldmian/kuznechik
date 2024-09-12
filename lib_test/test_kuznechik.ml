@@ -18,6 +18,14 @@ let block_test: bytes = Bytes.of_seq (List.to_seq [
   0xbb; 0xaa; 0x99; 0x88;
 ] |> Seq.map (fun x -> Char.chr x))
 
+let enc_block_test: bytes = Bytes.of_seq (List.to_seq [
+  0x7f; 0x67; 0x9d; 0x90;
+  0xbe; 0xbc; 0x24; 0x30;
+  0x5a; 0x46; 0x8d; 0x42;
+  0xb9; 0xd4; 0xed; 0xcd;
+] |> Seq.map (fun x -> Char.chr x))
+
 let () =
-  Printf.printf "%s\n" ((Kuznechik.encrypt_block key_test block_test) |> Hex.of_bytes |> Hex.show);;
-  Printf.printf "%s\n" ((Kuznechik.encrypt_block key_test block_test) |> (Kuznechik.decrypt_block key_test) |> Hex.of_bytes |> Hex.show);;
+  assert (Bytes.equal (Kuznechik.encrypt_block key_test block_test) enc_block_test);;
+  assert (Bytes.equal (Kuznechik.decrypt_block key_test enc_block_test) block_test);;
+  assert (Bytes.equal ((Kuznechik.encrypt_block key_test block_test) |> (Kuznechik.decrypt_block key_test)) block_test);;
