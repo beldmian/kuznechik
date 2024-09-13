@@ -7,9 +7,9 @@
 (source
  (github beldmian/kuznechik))
 
-(authors "Belousov Dmitry")
+(authors "Belousov Dmitry <beldmian@gmail.com>")
 
-(maintainers "Belousov Dmitry")
+(maintainers "Belousov Dmitry <beldmian@gmail.com>")
 
 (license MIT)
 
