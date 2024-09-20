@@ -1,31 +1,32 @@
 (* Utils and types *)
 
-let make_random_int64s n: (int64) list = List.init n (fun _ -> Random.bits64 ())
+let make_random_int64s n = List.init n (fun _ -> Random.bits64 ())
 
-let generate_key: bytes =
-  Random.self_init ();
-  let k = (Bytes.create 32) in
-    (List.iteri (fun i v -> (Bytes.set_int64_le k (i * 8) v)) (make_random_int64s 4)); k
+let generate_key =
+  Random.self_init () ;
+  let k = Bytes.create 32 in
+  List.iteri
+    (fun i v -> Bytes.set_int64_le k (i * 8) v)
+    (make_random_int64s 4) ;
+  k
 
-let _gf_mul_step ((a,b,c):(int*int*int)): (int*int*int) =
-  ((if (a land 0x80) != 0 then (a lsl 1) lxor 0xc3 else a lsl 1),
-   (b lsr 1),
-   (if (b land 1) = 1 then c lxor a else c))
+let _gf_mul_step (a, b, c) =
+  let a' = if a land 0x80 <> 0 then (a lsl 1) lxor 0xc3 else a lsl 1 in
+  let b' = b lsr 1 in
+  let c' = if b land 1 = 1 then c lxor a else c in
+  (a', b', c')
 
-let gf_mul (a:int) (b:int): int =
-  match ((a,b,0) |> Seq.iterate _gf_mul_step |> Seq.drop 8) () with
-    | Seq.Cons ((_, _, c), _) -> c mod 256
-    | _ -> -1
+let gf_mul a b =
+  match Seq.drop 8 (Seq.iterate _gf_mul_step (a, b, 0)) () with
+  | Seq.Cons ((_, _, c), _) -> c mod 256
+  | _ -> -1
 
-(* X Transition*)
+(* X Transition *)
 
-let x_trans (a:bytes) (b:bytes): bytes =
+let x_trans a b =
   Seq.map2
-    (fun a_el b_el ->
-      (Char.code a_el) lxor (Char.code b_el)
-      |> Char.chr)
-    (Bytes.to_seq a)
-    (Bytes.to_seq b)
+    (fun a_el b_el -> Char.chr (Char.code a_el lxor Char.code b_el))
+    (Bytes.to_seq a) (Bytes.to_seq b)
   |> Bytes.of_seq
 
 (* S Transition and Inverse S Transition*)
@@ -62,7 +63,7 @@ let pi_table: (int) list =
    0x20; 0x71; 0x67; 0xA4; 0x2D; 0x2B; 0x09; 0x5B;
    0xCB; 0x9B; 0x25; 0xD0; 0xBE; 0xE5; 0x6C; 0x52;
    0x59; 0xA6; 0x74; 0xD2; 0xE6; 0xF4; 0xB4; 0xC0;
-   0xD1; 0x66; 0xAF; 0xC2; 0x39; 0x4B; 0x63; 0xB6]
+   0xD1; 0x66; 0xAF; 0xC2; 0x39; 0x4B; 0x63; 0xB6] [@@ocamlformat "disable"]
 
 let pi_inv_table: (int) list =
  [0xA5; 0x2D; 0x32; 0x8F; 0x0E; 0x30; 0x38; 0xC0;
@@ -96,102 +97,97 @@ let pi_inv_table: (int) list =
   0x90; 0xD0; 0x24; 0x34; 0xCB; 0xED; 0xF4; 0xCE;
   0x99; 0x10; 0x44; 0x40; 0x92; 0x3A; 0x01; 0x26;
   0x12; 0x1A; 0x48; 0x68; 0xF5; 0x81; 0x8B; 0xC7;
-  0xD6; 0x20; 0x0A; 0x08; 0x00; 0x4C; 0xD7; 0x74]
+  0xD6; 0x20; 0x0A; 0x08; 0x00; 0x4C; 0xD7; 0x74] [@@ocamlformat "disable"]
 
-let s_generic_trans (l:(int)list) (a:bytes): bytes =
-  a |> Bytes.map
-    (fun x ->
-      List.nth l (Char.code x)
-      |> Char.chr)
+let s_generic_trans (l : int list) (a : bytes) : bytes =
+  a |> Bytes.map (fun x -> List.nth l (Char.code x) |> Char.chr)
 
-let s_trans: bytes -> bytes = s_generic_trans pi_table
-let s_inv_trans: bytes -> bytes = s_generic_trans pi_inv_table
+let s_trans : bytes -> bytes = s_generic_trans pi_table
+
+let s_inv_trans : bytes -> bytes = s_generic_trans pi_inv_table
 
 (* L Transition and Inverse L Transition*)
 
-let l_vec: (int)list =
-  [148; 32; 133; 16; 194; 192; 1; 251;
-  1; 192; 194; 16; 133; 32; 148; 1]
+let l_vec : int list =
+  [148; 32; 133; 16; 194; 192; 1; 251; 1; 192; 194; 16; 133; 32; 148; 1]
 
-let r_trans (a: bytes): bytes =
-  let new_val = Seq.fold_lefti
-    (fun v i c -> (gf_mul (Char.code c) (List.nth l_vec i)) lxor v)
-    0 (Bytes.to_seq a)
+let r_trans (a : bytes) : bytes =
+  let new_val =
+    Seq.fold_lefti
+      (fun v i c -> gf_mul (Char.code c) (List.nth l_vec i) lxor v)
+      0 (Bytes.to_seq a)
   in
-    Bytes.sub
-      (Bytes.cat (Char.chr new_val |> Bytes.make 1) a)
-      0 16
+  Bytes.sub (Bytes.cat (Bytes.make 1 (Char.chr new_val)) a) 0 16
 
-let r_inv_trans (a: bytes): bytes =
-  let new_val = Seq.fold_lefti
-    (fun v i c-> (gf_mul (Char.code c) (List.nth l_vec i)) lxor v)
-    (Bytes.get a 0 |> Char.code)
-    (Bytes.to_seq a |> Seq.drop 1)
+let r_inv_trans a =
+  let new_val =
+    Seq.fold_lefti
+      (fun v i c -> gf_mul (Char.code c) (List.nth l_vec i) lxor v)
+      (Char.code (Bytes.get a 0))
+      (Seq.drop 1 (Bytes.to_seq a))
   in
-    Bytes.cat
-      (Bytes.sub a 1 15)
-      (Char.chr new_val |> Bytes.make 1)
+  Bytes.cat (Bytes.sub a 1 15) (Bytes.make 1 (Char.chr new_val))
 
-let l_generic_trans (f: bytes -> bytes) (a:bytes): bytes =
-  match (a |> Seq.iterate f |> Seq.drop 16) () with
-    | Seq.Cons (k, _) -> k
-    | _ -> a
+let l_generic_trans f a =
+  match Seq.drop 16 (Seq.iterate f a) () with Seq.Cons (k, _) -> k | _ -> a
 
-let l_trans: bytes -> bytes = l_generic_trans r_trans
-let l_inv_trans: bytes -> bytes = l_generic_trans r_inv_trans
+let l_trans = l_generic_trans r_trans
+
+let l_inv_trans = l_generic_trans r_inv_trans
 
 (* Round constants computation *)
 
-let generate_round_constants: (bytes)list =
-  List.init 33
-    (fun i ->
-      Bytes.cat
-        (Bytes.make 15 (Char.chr 0))
-        (Bytes.make 1 (Char.chr i))
-      |> l_trans)
+let generate_round_constants =
+  List.init 33 (fun i ->
+      Bytes.cat (Bytes.make 15 (Char.chr 0)) (Bytes.make 1 (Char.chr i))
+      |> l_trans )
   |> List.tl
 
-(* Key extention *)
+(* Key extension *)
 
-let f_trans (k1:bytes) (k2:bytes) (iter_const:bytes): (bytes*bytes) =
-  (k1 |> (x_trans iter_const) |> s_trans |> l_trans |> x_trans k2, k1)
+let f_trans k1 k2 iter_const =
+  (k1 |> x_trans iter_const |> s_trans |> l_trans |> x_trans k2, k1)
 
-let make_iter_keys (k1:bytes) (k2:bytes) (round_const:(bytes)list): (bytes)list =
+let make_iter_keys k1 k2 round_const =
   Seq.iterate
-    (fun ((ik1, ik2), i) ->
-      (f_trans ik1 ik2 (List.nth round_const i), i+1))
-    ((k1,k2),0)
-  |> Seq.filter (fun (_, i) -> (i mod 8 = 0))
+    (fun ((ik1, ik2), i) -> (f_trans ik1 ik2 (List.nth round_const i), i + 1))
+    ((k1, k2), 0)
+  |> Seq.filter (fun (_, i) -> i mod 8 = 0)
   |> Seq.take 5
   |> Seq.map (fun ((ik1, ik2), _) -> [ik1; ik2])
-  |> List.of_seq
-  |> List.flatten
+  |> List.of_seq |> List.flatten
 
 (* Encrypt and Decrypt *)
 
-let encrypt_block (key:bytes) (msg:bytes): bytes =
-  let ik = make_iter_keys
-    (Bytes.sub key 0 16)
-    (Bytes.sub key 16 16)
-    (generate_round_constants)
+let encrypt_block key msg =
+  let ik =
+    make_iter_keys (Bytes.sub key 0 16) (Bytes.sub key 16 16)
+      generate_round_constants
   in
-    match ((msg, 0)
-      |> Seq.iterate (fun (x,i) -> (x |> x_trans (List.nth ik i) |> s_trans |> l_trans, i+1))
-      |> Seq.drop 9) ()
-    with
-      | Seq.Cons ((x,_), _) -> x |> x_trans (List.nth ik 9)
-      | _ -> msg
+  match
+    Seq.drop 9
+      (Seq.iterate
+         (fun (x, i) ->
+           (x |> x_trans (List.nth ik i) |> s_trans |> l_trans, i + 1) )
+         (msg, 0) )
+      ()
+  with
+  | Seq.Cons ((x, _), _) -> x |> x_trans (List.nth ik 9)
+  | _ -> msg
 
-
-let decrypt_block (key:bytes) (msg:bytes): bytes =
-  let ik = make_iter_keys
-    (Bytes.sub key 0 16)
-    (Bytes.sub key 16 16)
-    (generate_round_constants)
+let decrypt_block key msg =
+  let ik =
+    make_iter_keys (Bytes.sub key 0 16) (Bytes.sub key 16 16)
+      generate_round_constants
   in
-    match ((msg |> x_trans (List.nth ik 9), 0)
-      |> Seq.iterate (fun (x,i) -> (x |> l_inv_trans |> s_inv_trans |> x_trans (List.nth ik (8-i)), i+1))
-      |> Seq.drop 9) ()
-    with
-      | Seq.Cons ((x,_), _) -> x
-      | _ -> msg
+  match
+    Seq.drop 9
+      (Seq.iterate
+         (fun (x, i) ->
+           ( x |> l_inv_trans |> s_inv_trans |> x_trans (List.nth ik (8 - i))
+           , i + 1 ) )
+         (msg |> x_trans (List.nth ik 9), 0) )
+      ()
+  with
+  | Seq.Cons ((x, _), _) -> x
+  | _ -> msg
