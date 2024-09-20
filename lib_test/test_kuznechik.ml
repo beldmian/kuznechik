@@ -34,15 +34,11 @@ let enc_block_test : bytes =
 
 let () =
   assert (
-    Bytes.equal (Kuznechik.encrypt_block key_test block_test) enc_block_test )
-;;
-
-assert (
-  Bytes.equal (Kuznechik.decrypt_block key_test enc_block_test) block_test )
-;;
-
-assert (
-  Bytes.equal
-    ( Kuznechik.encrypt_block key_test block_test
-    |> Kuznechik.decrypt_block key_test )
-    block_test )
+    Bytes.equal (Kuznechik.encrypt_block key_test block_test) enc_block_test ) ;
+  assert (
+    Bytes.equal (Kuznechik.decrypt_block key_test enc_block_test) block_test ) ;
+  assert (
+    Bytes.equal
+      ( Kuznechik.encrypt_block key_test block_test
+      |> Kuznechik.decrypt_block key_test )
+      block_test )
