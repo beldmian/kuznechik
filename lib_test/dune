@@ -1,3 +1,8 @@
 (test
  (name test_kuznechik)
  (libraries kuznechik))
+
+(test
+ (name bench_kuznechik)
+ (ocamlopt_flags -O3 -rounds 5)
+ (libraries kuznechik core core_bench))

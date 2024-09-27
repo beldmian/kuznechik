@@ -10,8 +10,10 @@ homepage: "https://github.com/beldmian/kuznechik"
 doc: "https://github.com/beldmian/kuznechik"
 bug-reports: "https://github.com/beldmian/kuznechik/issues"
 depends: [
-  "ocaml" {>= "4.14.0"}
+  "ocaml" {>= "5.1.0"}
   "dune" {>= "3.16"}
+  "core" {>= "v0.17.0"}
+  "core_bench" {"v0.17.0" >= with-test}
   "odoc" {with-doc}
 ]
 build: [

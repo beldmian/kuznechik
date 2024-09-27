@@ -1,3 +1,5 @@
 (library
  (name kuznechik)
+ (ocamlopt_flags -O3 -rounds 16 -inline-max-unroll 100)
+ (libraries core)
  (public_name kuznechik))

@@ -1,38 +1,18 @@
 (* Utils and types *)
+open! Core
 
-let make_random_int64s n = List.init n (fun _ -> Random.bits64 ())
-
-let generate_key =
-  Random.self_init () ;
-  let k = Bytes.create 32 in
-  List.iteri
-    (fun i v -> Bytes.set_int64_le k (i * 8) v)
-    (make_random_int64s 4) ;
-  k
-
-let _gf_mul_step (a, b, c) =
-  let a' = if a land 0x80 <> 0 then (a lsl 1) lxor 0xc3 else a lsl 1 in
-  let b' = b lsr 1 in
-  let c' = if b land 1 = 1 then c lxor a else c in
-  (a', b', c')
-
-let gf_mul a b =
-  match Seq.drop 8 (Seq.iterate _gf_mul_step (a, b, 0)) () with
-  | Seq.Cons ((_, _, c), _) -> c mod 256
-  | _ -> -1
+let gf_mul (a : int) (b : int) =
+  Bigarray.Array1.unsafe_get Gf_mul_table.gf_mul_table ((a * 256) + b)
 
 (* X Transition *)
 
-let x_trans a b =
-  Seq.map2
-    (fun a_el b_el -> Char.chr (Char.code a_el lxor Char.code b_el))
-    (Bytes.to_seq a) (Bytes.to_seq b)
-  |> Bytes.of_seq
+let x_trans (a : int array) (b : int array) : int array =
+  Array.map2_exn a b ~f:(fun a_el b_el -> a_el lxor b_el)
 
 (* S Transition and Inverse S Transition*)
 
-let pi_table: (int) list =
-  [0xFC; 0xEE; 0xDD; 0x11; 0xCF; 0x6E; 0x31; 0x16;
+let pi_table: int array =
+  [|0xFC; 0xEE; 0xDD; 0x11; 0xCF; 0x6E; 0x31; 0x16;
    0xFB; 0xC4; 0xFA; 0xDA; 0x23; 0xC5; 0x04; 0x4D;
    0xE9; 0x77; 0xF0; 0xDB; 0x93; 0x2E; 0x99; 0xBA;
    0x17; 0x36; 0xF1; 0xBB; 0x14; 0xCD; 0x5F; 0xC1;
@@ -63,10 +43,10 @@ let pi_table: (int) list =
    0x20; 0x71; 0x67; 0xA4; 0x2D; 0x2B; 0x09; 0x5B;
    0xCB; 0x9B; 0x25; 0xD0; 0xBE; 0xE5; 0x6C; 0x52;
    0x59; 0xA6; 0x74; 0xD2; 0xE6; 0xF4; 0xB4; 0xC0;
-   0xD1; 0x66; 0xAF; 0xC2; 0x39; 0x4B; 0x63; 0xB6] [@@ocamlformat "disable"]
+   0xD1; 0x66; 0xAF; 0xC2; 0x39; 0x4B; 0x63; 0xB6|] [@@ocamlformat "disable"]
 
-let pi_inv_table: (int) list =
- [0xA5; 0x2D; 0x32; 0x8F; 0x0E; 0x30; 0x38; 0xC0;
+let pi_inv_table: int array =
+ [|0xA5; 0x2D; 0x32; 0x8F; 0x0E; 0x30; 0x38; 0xC0;
   0x54; 0xE6; 0x9E; 0x39; 0x55; 0x7E; 0x52; 0x91;
   0x64; 0x03; 0x57; 0x5A; 0x1C; 0x60; 0x07; 0x18;
   0x21; 0x72; 0xA8; 0xD1; 0x29; 0xC6; 0xA4; 0x3F;
@@ -97,97 +77,124 @@ let pi_inv_table: (int) list =
   0x90; 0xD0; 0x24; 0x34; 0xCB; 0xED; 0xF4; 0xCE;
   0x99; 0x10; 0x44; 0x40; 0x92; 0x3A; 0x01; 0x26;
   0x12; 0x1A; 0x48; 0x68; 0xF5; 0x81; 0x8B; 0xC7;
-  0xD6; 0x20; 0x0A; 0x08; 0x00; 0x4C; 0xD7; 0x74] [@@ocamlformat "disable"]
+  0xD6; 0x20; 0x0A; 0x08; 0x00; 0x4C; 0xD7; 0x74|] [@@ocamlformat "disable"]
 
-let s_generic_trans (l : int list) (a : bytes) : bytes =
-  a |> Bytes.map (fun x -> List.nth l (Char.code x) |> Char.chr)
+let s_generic_trans (l : int array) (a : int array) : int array =
+  a |> Array.map ~f:(fun x -> Array.unsafe_get l x)
 
-let s_trans : bytes -> bytes = s_generic_trans pi_table
+let s_trans : int array -> int array = s_generic_trans pi_table
 
-let s_inv_trans : bytes -> bytes = s_generic_trans pi_inv_table
+let s_inv_trans : int array -> int array = s_generic_trans pi_inv_table
 
 (* L Transition and Inverse L Transition*)
 
-let l_vec : int list =
-  [148; 32; 133; 16; 194; 192; 1; 251; 1; 192; 194; 16; 133; 32; 148; 1]
+let l_vec : int array =
+  [|148; 32; 133; 16; 194; 192; 1; 251; 1; 192; 194; 16; 133; 32; 148; 1|]
 
-let r_trans (a : bytes) : bytes =
+let r_trans (a : int array) : int array =
   let new_val =
-    Seq.fold_lefti
-      (fun v i c -> gf_mul (Char.code c) (List.nth l_vec i) lxor v)
-      0 (Bytes.to_seq a)
+    match
+      Array.fold a ~init:(0, 0) ~f:(fun (v, i) c ->
+          (gf_mul c (Array.unsafe_get l_vec i) lxor v, i + 1) )
+    with
+    | v, _ -> v
   in
-  Bytes.sub (Bytes.cat (Bytes.make 1 (Char.chr new_val)) a) 0 16
+  Array.unsafe_blit ~src:a ~src_pos:0 ~dst:a ~dst_pos:1 ~len:15 ;
+  Array.unsafe_set a 0 new_val ;
+  a
 
-let r_inv_trans a =
+let r_inv_trans (a : int array) : int array =
   let new_val =
-    Seq.fold_lefti
-      (fun v i c -> gf_mul (Char.code c) (List.nth l_vec i) lxor v)
-      (Char.code (Bytes.get a 0))
-      (Seq.drop 1 (Bytes.to_seq a))
+    match
+      Array.fold
+        (Array.sub a ~pos:1 ~len:15)
+        ~init:(Array.unsafe_get a 0, 0)
+        ~f:(fun (v, i) c ->
+          (gf_mul c (Array.unsafe_get l_vec i) lxor v, i + 1) )
+    with
+    | v, _ -> v
   in
-  Bytes.cat (Bytes.sub a 1 15) (Bytes.make 1 (Char.chr new_val))
+  Array.unsafe_blit ~src:a ~src_pos:1 ~dst:a ~dst_pos:0 ~len:15 ;
+  Array.unsafe_set a 15 new_val ;
+  a
 
-let l_generic_trans f a =
-  match Seq.drop 16 (Seq.iterate f a) () with Seq.Cons (k, _) -> k | _ -> a
+let rec _l_generic_trans_inner (f : int array -> int array) (a : int array)
+    (i : int) : int array =
+  match i with 0 -> a | _ -> _l_generic_trans_inner f (f a) (i - 1)
 
-let l_trans = l_generic_trans r_trans
+let l_generic_trans (f : int array -> int array) (a : int array) : int array
+    =
+  _l_generic_trans_inner f a 16
 
-let l_inv_trans = l_generic_trans r_inv_trans
+let l_trans : int array -> int array = l_generic_trans r_trans
+
+let l_inv_trans : int array -> int array = l_generic_trans r_inv_trans
 
 (* Round constants computation *)
 
-let generate_round_constants =
-  List.init 33 (fun i ->
-      Bytes.cat (Bytes.make 15 (Char.chr 0)) (Bytes.make 1 (Char.chr i))
-      |> l_trans )
-  |> List.tl
+let round_constants : int array array =
+  Array.sub ~pos:1 ~len:32
+    (Array.init 33 ~f:(fun i ->
+         Array.append (Array.create ~len:15 0) (Array.create ~len:1 i)
+         |> l_trans ) )
 
 (* Key extension *)
 
-let f_trans k1 k2 iter_const =
+let f_trans (k1 : int array) (k2 : int array) (iter_const : int array) :
+    int array * int array =
   (k1 |> x_trans iter_const |> s_trans |> l_trans |> x_trans k2, k1)
 
-let make_iter_keys k1 k2 round_const =
-  Seq.iterate
-    (fun ((ik1, ik2), i) -> (f_trans ik1 ik2 (List.nth round_const i), i + 1))
-    ((k1, k2), 0)
-  |> Seq.filter (fun (_, i) -> i mod 8 = 0)
-  |> Seq.take 5
-  |> Seq.map (fun ((ik1, ik2), _) -> [ik1; ik2])
-  |> List.of_seq |> List.flatten
+let make_iter_keys (k1 : int array) (k2 : int array)
+    (round_const : int array array) : int array array =
+  Sequence.take
+    ( Sequence.append
+        (Sequence.singleton ((k1, k2), 0))
+        (Sequence.unfold
+           ~init:((k1, k2), 0)
+           ~f:(fun ((ik1, ik2), i) ->
+             let new_val =
+               (f_trans ik1 ik2 (Array.get round_const i), i + 1)
+             in
+             Option.some (new_val, new_val) ) )
+    |> Sequence.filter ~f:(fun (_, i) -> i mod 8 = 0) )
+    5
+  |> Sequence.map ~f:(fun ((ik1, ik2), _) -> [ik1; ik2])
+  |> Sequence.to_list |> List.concat |> Array.of_list
 
 (* Encrypt and Decrypt *)
 
-let encrypt_block key msg =
-  let ik =
-    make_iter_keys (Bytes.sub key 0 16) (Bytes.sub key 16 16)
-      generate_round_constants
-  in
-  match
-    Seq.drop 9
-      (Seq.iterate
-         (fun (x, i) ->
-           (x |> x_trans (List.nth ik i) |> s_trans |> l_trans, i + 1) )
-         (msg, 0) )
-      ()
-  with
-  | Seq.Cons ((x, _), _) -> x |> x_trans (List.nth ik 9)
-  | _ -> msg
+module Cipher = struct
+  type t = {key: int array; ik: int array array}
 
-let decrypt_block key msg =
-  let ik =
-    make_iter_keys (Bytes.sub key 0 16) (Bytes.sub key 16 16)
-      generate_round_constants
-  in
-  match
-    Seq.drop 9
-      (Seq.iterate
-         (fun (x, i) ->
-           ( x |> l_inv_trans |> s_inv_trans |> x_trans (List.nth ik (8 - i))
-           , i + 1 ) )
-         (msg |> x_trans (List.nth ik 9), 0) )
-      ()
-  with
-  | Seq.Cons ((x, _), _) -> x
-  | _ -> msg
+  let make (key : int array) : t =
+    { key
+    ; ik=
+        make_iter_keys
+          (Array.sub key ~pos:0 ~len:16)
+          (Array.sub key ~pos:16 ~len:16)
+          round_constants }
+
+  let rec _encrypt_block_inner (ik : int array array) (x : int array)
+      (i : int) : int array =
+    match i with
+    | 9 -> x
+    | _ ->
+        _encrypt_block_inner ik
+          (x |> x_trans ik.(i) |> s_trans |> l_trans)
+          (i + 1)
+
+  let encrypt_block (cipher : t) (msg : int array) : int array =
+    _encrypt_block_inner cipher.ik msg 0 |> x_trans cipher.ik.(9)
+
+  let rec _decrypt_block_inner (ik : int array array) (x : int array)
+      (i : int) : int array =
+    match i with
+    | 9 -> x
+    | _ ->
+        _decrypt_block_inner ik
+          (x |> l_inv_trans |> s_inv_trans |> x_trans ik.(8 - i))
+          (i + 1)
+
+  let decrypt_block (cipher : t) (msg : int array) : int array =
+    _decrypt_block_inner cipher.ik (msg |> x_trans cipher.ik.(9)) 0
+end
