@@ -22,6 +22,6 @@
  (depends
   (ocaml (>= "5.1.0"))
   dune
-  core
-  (core_bench :with-test)
+  (core (>= "v0.17.0"))
+  (core_bench (>= "v0.17.0" :with-test))
   ))
