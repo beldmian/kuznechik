@@ -30,13 +30,15 @@ let () =
            ~args:[("basic_gost_key", Kuznechik.Cipher.make key_test)]
            (fun cipher ->
              Staged.stage (fun () ->
-                 ignore (Kuznechik.Cipher.encrypt_block cipher block_test) )
-             )
+                 for _ = 0 to 9 do
+                   ignore (Kuznechik.Cipher.encrypt_block cipher block_test)
+                 done ) )
        ; Bench.Test.create_parameterised ~name:"Decrypt block"
            ~args:[("basic_gost_key", Kuznechik.Cipher.make key_test)]
            (fun cipher ->
              Staged.stage (fun () ->
-                 ignore
-                   (Kuznechik.Cipher.decrypt_block cipher enc_block_test) )
-             ) ] ) ;
+                 for _ = 0 to 9 do
+                   ignore
+                     (Kuznechik.Cipher.decrypt_block cipher enc_block_test)
+                 done ) ) ] ) ;
   Gc.print_stat stdout

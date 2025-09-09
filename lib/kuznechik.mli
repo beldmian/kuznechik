@@ -1,5 +1,5 @@
 module Cipher : sig
-  type t = {key: int array; ik: int array array}
+  type t = {key: int array; ik: int array array; ik_inv: int array array}
 
   val make : int array -> t
   (** [make key] creates instance of [Cipher.t] using provided [key]*)
